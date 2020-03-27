@@ -10,7 +10,6 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,7 +18,7 @@ import com.google.common.base.Strings;
 
 public class RequestHandler extends Thread {
     private static final Logger log = LoggerFactory.getLogger(RequestHandler.class);
-    private static final byte[] DEFAULT_RESPONSE_BODY = "Hello World".getBytes();
+    private static final String DEFAULT_RESPONSE_PATH = "/index.html";
 
     private Socket connection;
 
@@ -31,10 +30,9 @@ public class RequestHandler extends Thread {
         log.debug("New Client Connect! Connected IP : {}, Port : {}", connection.getInetAddress(), connection.getPort());
 
         try (InputStream in = connection.getInputStream(); OutputStream out = connection.getOutputStream()) {
-            String path = getResourcePath(in);
-            byte[] body = Optional.ofNullable(path).map(this::getBody).orElse(DEFAULT_RESPONSE_BODY);
-
             DataOutputStream dos = new DataOutputStream(out);
+            byte[] body = Files.readAllBytes(Paths.get("./webapp" + getPath(in)));
+
             response200Header(dos, body.length);
             responseBody(dos, body);
         } catch (IOException e) {
@@ -42,39 +40,26 @@ public class RequestHandler extends Thread {
         }
     }
 
-    private String getResourcePath(InputStream in) {
-        try {
-            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+    private String getPath(InputStream in) throws IOException {
+        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
 
-            while (true) {
-                String str = bufferedReader.readLine();
-
-                if(Strings.isNullOrEmpty(str)) {
-                    break;
-                }
-
-                if(str.contains("GET")) {
-                    String[] requestInfo = str.split(" ");
-                    // TODO length>2 다른사람들은 어떻게 처리했는지?
-                    return requestInfo[1];
-                }
+        while (true) {
+            String line = bufferedReader.readLine();
+            if(Strings.isNullOrEmpty(line)) {
+                break;
             }
-        } catch (IOException e) {
-            e.printStackTrace();
+
+            if(line.contains("GET")) {
+                // TODO length>2 다른사람들은 어떻게 처리했을지
+                String[] requestInfo = line.split(" ");
+                String path = requestInfo[1];
+                return path.equals("/") ? DEFAULT_RESPONSE_PATH : requestInfo[1];
+            }
         }
 
-        return null;
+        return DEFAULT_RESPONSE_PATH;
     }
 
-    private byte[] getBody(String path) {
-        try {
-            return Files.readAllBytes(Paths.get("./webapp" + path));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        return DEFAULT_RESPONSE_BODY;
-    }
 
     private void response200Header(DataOutputStream dos, int lengthOfBodyContent) {
         try {
